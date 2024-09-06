@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Select, { MultiValue } from 'react-select';
 import { getRepositories, getDeployments, getEnvironments } from '../utils/github';
+import Image from 'next/image';
 
 interface RepoOption {
   value: string;
@@ -122,7 +123,13 @@ export default function Home() {
                 <div className="deployment-header">
                   {deployment.creator && (
                     <>
-                      <img src={deployment.creator.avatar_url} alt={deployment.creator.login} className="avatar" />
+                      <Image
+                        src={deployment.creator.avatar_url}
+                        alt={deployment.creator.login}
+                        width={32}
+                        height={32}
+                        className="avatar"
+                      />
                       <span>{deployment.creator.login}</span>
                     </>
                   )}
