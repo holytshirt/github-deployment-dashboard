@@ -1,13 +1,23 @@
 import { Octokit } from "@octokit/rest";
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+let octokit: Octokit | null = null;
+
+export const initializeOctokit = (accessToken: string) => {
+  octokit = new Octokit({ auth: accessToken });
+};
+
+const ensureOctokit = () => {
+  if (!octokit) throw new Error("Octokit not initialized");
+  return octokit;
+};
 
 export const getRepositories = async () => {
+  const client = ensureOctokit();
   try {
     console.log('Fetching repositories');
-    const { data } = await octokit.repos.listForAuthenticatedUser({
+    const { data } = await client.repos.listForAuthenticatedUser({
       sort: 'updated',
-      per_page: 100, // Adjust this number as needed
+      per_page: 100,
     });
     console.log(`Successfully fetched ${data.length} repositories`);
     return data.map(repo => ({ 
@@ -17,21 +27,17 @@ export const getRepositories = async () => {
     }));
   } catch (error) {
     console.error('Error fetching repositories:', error);
-    if (error instanceof Error) {
-      console.error('Error message:', error.message);
-    } else {
-      console.error('An unknown error occurred');
-    }
     throw error;
   }
 };
 
 export const getDeployments = async (full_name: string) => {
+  const client = ensureOctokit();
   const [owner, repo] = full_name.split('/');
   try {
-    const { data } = await octokit.repos.listDeployments({ owner, repo });
+    const { data } = await client.repos.listDeployments({ owner, repo });
     return Promise.all(data.map(async (deployment) => {
-      const { data: deploymentStatus } = await octokit.repos.listDeploymentStatuses({
+      const { data: deploymentStatus } = await client.repos.listDeploymentStatuses({
         owner,
         repo,
         deployment_id: deployment.id
@@ -40,7 +46,7 @@ export const getDeployments = async (full_name: string) => {
       // Fetch release tag
       let releaseTag = '';
       try {
-        const { data: release } = await octokit.repos.getReleaseByTag({
+        const { data: release } = await client.repos.getReleaseByTag({
           owner,
           repo,
           tag: deployment.ref
@@ -76,9 +82,10 @@ export const getDeployments = async (full_name: string) => {
 };
 
 export const getEnvironments = async (full_name: string) => {
+  const client = ensureOctokit();
   const [owner, repo] = full_name.split('/');
   try {
-    const { data } = await octokit.repos.getAllEnvironments({ owner, repo });
+    const { data } = await client.repos.getAllEnvironments({ owner, repo });
     return data.environments || [];
   } catch (error) {
     console.error(`Error fetching environments for ${full_name}:`, error);
