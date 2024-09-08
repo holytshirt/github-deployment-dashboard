@@ -54,10 +54,12 @@ export default function Home() {
   const [expandedEnvironments, setExpandedEnvironments] = useState<{[key: string]: boolean}>({});
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
+  const [isRateLimited, setIsRateLimited] = useState(false);
 
   const refreshDashboard = useCallback(async (repos: RepoOption[]) => {
     if (!userId) return;
     setIsLoading(true);
+    setIsRateLimited(false);
     try {
       const newDashboardData: DashboardData = {};
       await Promise.all(repos.map(async (repo) => {
@@ -70,11 +72,16 @@ export default function Home() {
       setDashboardData(newDashboardData);
     } catch (error) {
       console.error('Error refreshing dashboard:', error);
-      if (error instanceof Error && error.message === 'AUTH_REQUIRED') {
-        setIsAuthenticated(false);
-        setError('Authentication required. Please sign in again.');
-      } else {
-        setError('Failed to refresh dashboard data');
+      if (error instanceof Error) {
+        if (error.message === 'AUTH_REQUIRED') {
+          setIsAuthenticated(false);
+          setError('Authentication required. Please sign in again.');
+        } else if (error.message === 'RATE_LIMIT_EXCEEDED') {
+          setIsRateLimited(true);
+          setError('GitHub API rate limit exceeded. Please try again later.');
+        } else {
+          setError('Failed to refresh dashboard data');
+        }
       }
     } finally {
       setIsLoading(false);
@@ -83,6 +90,7 @@ export default function Home() {
 
   const fetchInitialData = useCallback(async () => {
     if (!userId) return;
+    setIsRateLimited(false);
     try {
       const repos = await getRepositories(userId);
       setRepoOptions(repos);
@@ -96,11 +104,16 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Error in fetchInitialData:', err);
-      if (err instanceof Error && err.message === 'AUTH_REQUIRED') {
-        setIsAuthenticated(false);
-        setError('Authentication required. Please sign in again.');
-      } else {
-        setError('Failed to fetch repositories. Please check the console for more details.');
+      if (err instanceof Error) {
+        if (err.message === 'AUTH_REQUIRED') {
+          setIsAuthenticated(false);
+          setError('Authentication required. Please sign in again.');
+        } else if (err.message === 'RATE_LIMIT_EXCEEDED') {
+          setIsRateLimited(true);
+          setError('GitHub API rate limit exceeded. Please try again later.');
+        } else {
+          setError('Failed to fetch repositories. Please check the console for more details.');
+        }
       }
     }
   }, [userId, refreshDashboard, setRepoOptions, setError, setSelectedRepos, setIsAuthenticated]);
@@ -262,6 +275,11 @@ export default function Home() {
       <div>
         <h1>GitHub Repository Dashboard</h1>
         {error && <div style={{ color: 'red' }}>{error}</div>}
+        {isRateLimited && (
+          <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '10px', borderRadius: '5px', marginBottom: '10px' }}>
+            <strong>Rate Limit Exceeded:</strong> GitHub API rate limit has been reached. Please wait a while before trying again.
+          </div>
+        )}
         {!isAuthenticated ? (
           <button onClick={handleSignIn}>Sign in with GitHub</button>
         ) : (

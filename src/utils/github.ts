@@ -182,13 +182,17 @@ export const getEnvironments = async (userId: string, full_name: string) => {
 };
 
 const handleApiError = async (error: unknown, userId: string) => {
-  if (error instanceof Error && 'status' in error && error.status === 401) {
-    // Remove the invalid token
-    localStorage.removeItem(`github_token-${userId}`);
-    // Remove the Octokit instance
-    delete octokitInstances[userId];
-    // Instead of redirecting, we'll throw a specific error
-    throw new Error('AUTH_REQUIRED');
+  if (error instanceof Error && 'status' in error) {
+    if (error.status === 401) {
+      // Remove the invalid token
+      localStorage.removeItem(`github_token-${userId}`);
+      // Remove the Octokit instance
+      delete octokitInstances[userId];
+      // Instead of redirecting, we'll throw a specific error
+      throw new Error('AUTH_REQUIRED');
+    } else if (error.status === 403 && error.message.includes('API rate limit exceeded')) {
+      throw new Error('RATE_LIMIT_EXCEEDED');
+    }
   }
   throw error;
 };
