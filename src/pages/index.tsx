@@ -53,14 +53,37 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [expandedEnvironments, setExpandedEnvironments] = useState<{[key: string]: boolean}>({});
   const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const refreshDashboard = useCallback(async (repos: RepoOption[]) => {
+    if (!userId) return;
+    setIsLoading(true);
+    try {
+      const newDashboardData: DashboardData = {};
+      await Promise.all(repos.map(async (repo) => {
+        const [groupedDeployments, environments] = await Promise.all([
+          getDeployments(userId, repo.value),
+          getEnvironments(userId, repo.value)
+        ]);
+        newDashboardData[repo.value] = { groupedDeployments, environments };
+      }));
+      setDashboardData(newDashboardData);
+    } catch (error) {
+      console.error('Error refreshing dashboard:', error);
+      setError('Failed to refresh dashboard data');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId, setDashboardData, setError, setIsLoading]);
 
   const fetchInitialData = useCallback(async () => {
+    if (!userId) return;
     try {
-      const repos = await getRepositories();
+      const repos = await getRepositories(userId);
       setRepoOptions(repos);
       setError(null);
       
-      const savedRepos = localStorage.getItem('selectedRepos');
+      const savedRepos = localStorage.getItem(`selectedRepos-${userId}`);
       if (savedRepos) {
         const parsedRepos = JSON.parse(savedRepos) as RepoOption[];
         setSelectedRepos(parsedRepos);
@@ -70,7 +93,7 @@ export default function Home() {
       console.error('Error in fetchInitialData:', err);
       setError('Failed to fetch repositories. Please check the console for more details.');
     }
-  }, []);
+  }, [userId, refreshDashboard]);
 
   const exchangeCodeForToken = useCallback(async (code: string) => {
     try {
@@ -82,8 +105,11 @@ export default function Home() {
 
       const data = await response.json();
       if (data.access_token) {
-        localStorage.setItem('github_token', data.access_token);
-        initializeOctokit(data.access_token);
+        const newUserId = Math.random().toString(36).substring(7);
+        setUserId(newUserId);
+        localStorage.setItem('userId', newUserId);
+        localStorage.setItem(`github_token-${newUserId}`, data.access_token);
+        initializeOctokit(newUserId, data.access_token);
         setIsAuthenticated(true);
         fetchInitialData();
       } else {
@@ -97,11 +123,15 @@ export default function Home() {
 
   useEffect(() => {
     setIsClient(true);
-    const token = localStorage.getItem('github_token');
-    if (token) {
-      initializeOctokit(token);
-      setIsAuthenticated(true);
-      fetchInitialData();
+    const storedUserId = localStorage.getItem('userId');
+    if (storedUserId) {
+      setUserId(storedUserId);
+      const token = localStorage.getItem(`github_token-${storedUserId}`);
+      if (token) {
+        initializeOctokit(storedUserId, token);
+        setIsAuthenticated(true);
+        fetchInitialData();
+      }
     } else {
       const { code } = router.query;
       if (code && typeof code === 'string') {
@@ -122,30 +152,11 @@ export default function Home() {
     }
   };
 
-  const refreshDashboard = async (repos: RepoOption[]) => {
-    setIsLoading(true);
-    try {
-      const newDashboardData: DashboardData = {};
-      await Promise.all(repos.map(async (repo) => {
-        const [groupedDeployments, environments] = await Promise.all([
-          getDeployments(repo.value),
-          getEnvironments(repo.value)
-        ]);
-        newDashboardData[repo.value] = { groupedDeployments, environments };
-      }));
-      setDashboardData(newDashboardData);
-    } catch (error) {
-      console.error('Error refreshing dashboard:', error);
-      setError('Failed to refresh dashboard data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleRepoSelection = async (selected: MultiValue<RepoOption>) => {
+    if (!userId) return;
     const selectedRepos = selected as RepoOption[];
     setSelectedRepos(selectedRepos);
-    localStorage.setItem('selectedRepos', JSON.stringify(selectedRepos));
+    localStorage.setItem(`selectedRepos-${userId}`, JSON.stringify(selectedRepos));
     await refreshDashboard(selectedRepos);
   };
 

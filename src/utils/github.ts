@@ -1,30 +1,33 @@
 import { Octokit } from "@octokit/rest";
 
-let octokit: Octokit | null = null;
+const octokitInstances: { [userId: string]: Octokit } = {};
 
-export const initializeOctokit = (accessToken: string) => {
-  octokit = new Octokit({ auth: accessToken });
+export const initializeOctokit = (userId: string, accessToken: string) => {
+  octokitInstances[userId] = new Octokit({ auth: accessToken });
 };
 
-const ensureOctokit = () => {
-  if (!octokit) throw new Error("Octokit not initialized");
-  return octokit;
+const ensureOctokit = (userId: string) => {
+  if (!octokitInstances[userId]) throw new Error("Octokit not initialized for this user");
+  return octokitInstances[userId];
 };
 
 // Simple in-memory cache
-const cache: { [key: string]: { data: unknown; timestamp: number } } = {};
+const cache: { [userId: string]: { [key: string]: { data: unknown; timestamp: number } } } = {};
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-const getCachedData = <T>(key: string): T | null => {
-  const cached = cache[key];
+const getCachedData = <T>(userId: string, key: string): T | null => {
+  const userCache = cache[userId];
+  if (!userCache) return null;
+  const cached = userCache[key];
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.data as T;
   }
   return null;
 };
 
-const setCachedData = <T>(key: string, data: T) => {
-  cache[key] = { data, timestamp: Date.now() };
+const setCachedData = <T>(userId: string, key: string, data: T) => {
+  if (!cache[userId]) cache[userId] = {};
+  cache[userId][key] = { data, timestamp: Date.now() };
 };
 
 export interface RepoOption {
@@ -33,10 +36,10 @@ export interface RepoOption {
   owner: string;
 }
 
-export const getRepositories = async () => {
-  const client = ensureOctokit();
+export const getRepositories = async (userId: string) => {
+  const client = ensureOctokit(userId);
   const cacheKey = 'repositories';
-  const cachedRepos = getCachedData<RepoOption[]>(cacheKey);
+  const cachedRepos = getCachedData<RepoOption[]>(userId, cacheKey);
   if (cachedRepos) return cachedRepos;
 
   try {
@@ -53,7 +56,7 @@ export const getRepositories = async () => {
       })));
     }
     console.log(`Successfully fetched ${repos.length} repositories`);
-    setCachedData(cacheKey, repos);
+    setCachedData(userId, cacheKey, repos);
     return repos;
   } catch (error) {
     console.error('Error fetching repositories:', error);
@@ -85,11 +88,11 @@ export interface GroupedDeployment {
   deployments: Deployment[];
 }
 
-export const getDeployments = async (full_name: string): Promise<GroupedDeployment[]> => {
-  const client = ensureOctokit();
+export const getDeployments = async (userId: string, full_name: string): Promise<GroupedDeployment[]> => {
+  const client = ensureOctokit(userId);
   const [owner, repo] = full_name.split('/');
   const cacheKey = `deployments-${full_name}`;
-  const cachedDeployments = getCachedData<GroupedDeployment[]>(cacheKey);
+  const cachedDeployments = getCachedData<GroupedDeployment[]>(userId, cacheKey);
   if (cachedDeployments) return cachedDeployments;
 
   try {
@@ -141,7 +144,7 @@ export const getDeployments = async (full_name: string): Promise<GroupedDeployme
       deployments
     }));
 
-    setCachedData(cacheKey, result);
+    setCachedData(userId, cacheKey, result);
     return result;
   } catch (error) {
     console.error(`Error fetching deployments for ${full_name}:`, error);
@@ -154,17 +157,17 @@ export interface Environment {
   name: string;
 }
 
-export const getEnvironments = async (full_name: string) => {
-  const client = ensureOctokit();
+export const getEnvironments = async (userId: string, full_name: string) => {
+  const client = ensureOctokit(userId);
   const [owner, repo] = full_name.split('/');
   const cacheKey = `environments-${full_name}`;
-  const cachedEnvironments = getCachedData<Environment[]>(cacheKey);
+  const cachedEnvironments = getCachedData<Environment[]>(userId, cacheKey);
   if (cachedEnvironments) return cachedEnvironments;
 
   try {
     const { data } = await client.repos.getAllEnvironments({ owner, repo });
     const environments = data.environments || [];
-    setCachedData(cacheKey, environments);
+    setCachedData(userId, cacheKey, environments);
     return environments;
   } catch (error) {
     console.error(`Error fetching environments for ${full_name}:`, error);
