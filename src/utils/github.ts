@@ -31,12 +31,36 @@ export const getRepositories = async () => {
   }
 };
 
-export const getDeployments = async (full_name: string) => {
+interface Deployment {
+  id: number;
+  sha: string;
+  ref: string;
+  task: string;
+  environment: string;
+  description: string;
+  creator: {
+    login: string;
+    avatar_url: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
+  statuses_url: string;
+  repository_url: string;
+  status?: string;
+  releaseTag: string;
+}
+
+export interface GroupedDeployment {
+  environment: string;
+  deployments: Deployment[];
+}
+
+export const getDeployments = async (full_name: string): Promise<GroupedDeployment[]> => {
   const client = ensureOctokit();
   const [owner, repo] = full_name.split('/');
   try {
     const { data } = await client.repos.listDeployments({ owner, repo });
-    return Promise.all(data.map(async (deployment) => {
+    const deployments = await Promise.all(data.map(async (deployment) => {
       const { data: deploymentStatus } = await client.repos.listDeploymentStatuses({
         owner,
         repo,
@@ -74,6 +98,25 @@ export const getDeployments = async (full_name: string) => {
         status: deploymentStatus[0]?.state || 'unknown',
         releaseTag: releaseTag
       };
+    }));
+
+    // Group deployments by environment
+    const groupedDeployments: { [env: string]: Deployment[] } = {};
+    deployments.forEach(deployment => {
+      if (!groupedDeployments[deployment.environment]) {
+        groupedDeployments[deployment.environment] = [];
+      }
+      groupedDeployments[deployment.environment].push(deployment);
+    });
+
+    // Sort deployments within each environment by created_at (newest first)
+    Object.values(groupedDeployments).forEach(envDeployments => {
+      envDeployments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    });
+
+    return Object.entries(groupedDeployments).map(([environment, deployments]) => ({
+      environment,
+      deployments
     }));
   } catch (error) {
     console.error(`Error fetching deployments for ${full_name}:`, error);

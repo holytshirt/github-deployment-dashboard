@@ -142,3 +142,21 @@ ul {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+.environment-container {
+  margin-bottom: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.environment-container h4 {
+  background-color: #f0f0f0;
+  padding: 10px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.environment-container h4:hover {
+  background-color: #e0e0e0;
+}

@@ -34,9 +34,14 @@ interface Environment {
   name: string;
 }
 
+interface GroupedDeployment {
+  environment: string;
+  deployments: Deployment[];
+}
+
 interface DashboardData {
   [repo: string]: {
-    deployments: Deployment[];
+    groupedDeployments: GroupedDeployment[];
     environments: Environment[];
   };
 }
@@ -50,6 +55,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
+  const [expandedEnvironments, setExpandedEnvironments] = useState<{[key: string]: boolean}>({});
 
   useEffect(() => {
     setIsClient(true);
@@ -126,9 +132,9 @@ export default function Home() {
     try {
       const newDashboardData: DashboardData = {};
       for (const repo of repos) {
-        const deployments = await getDeployments(repo.value);
+        const groupedDeployments = await getDeployments(repo.value);
         const environments = await getEnvironments(repo.value);
-        newDashboardData[repo.value] = { deployments, environments };
+        newDashboardData[repo.value] = { groupedDeployments, environments };
       }
       setDashboardData(newDashboardData);
     } catch (error) {
@@ -163,6 +169,13 @@ export default function Home() {
     }
   };
 
+  const toggleEnvironment = (repo: string, environment: string) => {
+    setExpandedEnvironments(prev => ({
+      ...prev,
+      [`${repo}-${environment}`]: !prev[`${repo}-${environment}`]
+    }));
+  };
+
   return (
     <div>
       <h1>GitHub Repository Dashboard</h1>
@@ -194,36 +207,43 @@ export default function Home() {
               <h2>{repo}</h2>
               <h3>Deployments</h3>
               <div className="deployment-grid">
-                {data.deployments.map((deployment) => (
-                  <div key={deployment.id} className={`deployment-card ${getStatusClass(deployment.status || 'unknown')}`}>
-                    <div className="deployment-header">
-                      {deployment.creator && (
-                        <>
-                          <Image
-                            src={deployment.creator.avatar_url}
-                            alt={deployment.creator.login}
-                            width={32}
-                            height={32}
-                            className="avatar"
-                          />
-                          <span>{deployment.creator.login}</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="deployment-body">
-                      <p><strong>Environment:</strong> {deployment.environment}</p>
-                      <p><strong>Version:</strong> {deployment.sha.substring(0, 7)}</p>
-                      {deployment.releaseTag && (
-                        <p><strong>Release Tag:</strong> {deployment.releaseTag}</p>
-                      )}
-                      <p><strong>Description:</strong> {deployment.description || 'No description provided'}</p>
-                      <p><strong>Deployed at:</strong> {new Date(deployment.created_at).toLocaleString()}</p>
-                      <p>
-                        <strong>Status:</strong> 
-                        <span className={`status-indicator ${getStatusClass(deployment.status || 'unknown')}`}></span>
-                        {deployment.status || 'Unknown'}
-                      </p>
-                    </div>
+                {data.groupedDeployments.map(({ environment, deployments }) => (
+                  <div key={environment} className="environment-container">
+                    <h4 onClick={() => toggleEnvironment(repo, environment)} style={{ cursor: 'pointer' }}>
+                      {environment} ({deployments.length} deployments)
+                    </h4>
+                    {(expandedEnvironments[`${repo}-${environment}`] ? deployments : [deployments[0]]).map((deployment) => (
+                      <div key={deployment.id} className={`deployment-card ${getStatusClass(deployment.status || 'unknown')}`}>
+                        <div className="deployment-header">
+                          {deployment.creator && (
+                            <>
+                              <Image
+                                src={deployment.creator.avatar_url}
+                                alt={deployment.creator.login}
+                                width={32}
+                                height={32}
+                                className="avatar"
+                              />
+                              <span>{deployment.creator.login}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="deployment-body">
+                          <p><strong>Environment:</strong> {deployment.environment}</p>
+                          <p><strong>Version:</strong> {deployment.sha.substring(0, 7)}</p>
+                          {deployment.releaseTag && (
+                            <p><strong>Release Tag:</strong> {deployment.releaseTag}</p>
+                          )}
+                          <p><strong>Description:</strong> {deployment.description || 'No description provided'}</p>
+                          <p><strong>Deployed at:</strong> {new Date(deployment.created_at).toLocaleString()}</p>
+                          <p>
+                            <strong>Status:</strong> 
+                            <span className={`status-indicator ${getStatusClass(deployment.status || 'unknown')}`}></span>
+                            {deployment.status || 'Unknown'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
