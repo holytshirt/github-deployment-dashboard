@@ -114,7 +114,7 @@ export default function Home() {
       const response = await fetch('/api/github-client-id');
       const { clientId } = await response.json();
       const redirectUri = `${window.location.origin}/`;
-      window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=repo`;
+      window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=repo:read`;
     } catch (error) {
       console.error('Error fetching client ID:', error);
       setError('Failed to initiate GitHub sign-in');
