@@ -70,11 +70,16 @@ export default function Home() {
       setDashboardData(newDashboardData);
     } catch (error) {
       console.error('Error refreshing dashboard:', error);
-      setError('Failed to refresh dashboard data');
+      if (error instanceof Error && error.message === 'AUTH_REQUIRED') {
+        setIsAuthenticated(false);
+        setError('Authentication required. Please sign in again.');
+      } else {
+        setError('Failed to refresh dashboard data');
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [userId, setDashboardData, setError, setIsLoading]);
+  }, [userId, setDashboardData, setError, setIsLoading, setIsAuthenticated]);
 
   const fetchInitialData = useCallback(async () => {
     if (!userId) return;
@@ -91,9 +96,14 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Error in fetchInitialData:', err);
-      setError('Failed to fetch repositories. Please check the console for more details.');
+      if (err instanceof Error && err.message === 'AUTH_REQUIRED') {
+        setIsAuthenticated(false);
+        setError('Authentication required. Please sign in again.');
+      } else {
+        setError('Failed to fetch repositories. Please check the console for more details.');
+      }
     }
-  }, [userId, refreshDashboard]);
+  }, [userId, refreshDashboard, setRepoOptions, setError, setSelectedRepos, setIsAuthenticated]);
 
   const exchangeCodeForToken = useCallback(async (code: string) => {
     try {
@@ -131,6 +141,8 @@ export default function Home() {
         initializeOctokit(storedUserId, token);
         setIsAuthenticated(true);
         fetchInitialData();
+      } else {
+        setIsAuthenticated(false);
       }
     } else {
       const { code } = router.query;
@@ -145,7 +157,8 @@ export default function Home() {
       const response = await fetch('/api/github-client-id');
       const { clientId } = await response.json();
       const redirectUri = `${window.location.origin}/`;
-      window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=repo:read`;
+      const scope = 'repo read:org';
+      window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
     } catch (error) {
       console.error('Error fetching client ID:', error);
       setError('Failed to initiate GitHub sign-in');
@@ -273,7 +286,7 @@ export default function Home() {
             </div>
             {!isLoading && Object.entries(dashboardData).map(([repo, data]) => (
               <div key={repo} className="repo-container">
-                <h2>{repo}</h2>
+                <h2>{repo} {selectedRepos.find(r => r.value === repo)?.isOrg ? '(Organization)' : '(User)'}</h2>
                 <h3>Deployments</h3>
                 <div className="deployment-grid">
                   {data.groupedDeployments.map((groupedDeployment) => (

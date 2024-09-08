@@ -34,6 +34,7 @@ export interface RepoOption {
   value: string;
   label: string;
   owner: string;
+  isOrg: boolean;
 }
 
 export const getRepositories = async (userId: string) => {
@@ -45,22 +46,27 @@ export const getRepositories = async (userId: string) => {
   try {
     console.log('Fetching repositories');
     const repos: RepoOption[] = [];
+
+    // Fetch all repositories the user has access to (including org repos)
     for await (const response of client.paginate.iterator(client.repos.listForAuthenticatedUser, {
       sort: 'updated',
       per_page: 100,
+      affiliation: 'owner,collaborator,organization_member'
     })) {
       repos.push(...response.data.map(repo => ({
         value: repo.full_name,
         label: repo.full_name,
         owner: repo.owner.login,
+        isOrg: repo.owner.type === 'Organization'
       })));
     }
+
     console.log(`Successfully fetched ${repos.length} repositories`);
     setCachedData(userId, cacheKey, repos);
     return repos;
   } catch (error) {
     console.error('Error fetching repositories:', error);
-    throw error;
+    return handleApiError(error, userId);
   }
 };
 
@@ -148,7 +154,7 @@ export const getDeployments = async (userId: string, full_name: string): Promise
     return result;
   } catch (error) {
     console.error(`Error fetching deployments for ${full_name}:`, error);
-    throw error;
+    return handleApiError(error, userId);
   }
 };
 
@@ -171,6 +177,18 @@ export const getEnvironments = async (userId: string, full_name: string) => {
     return environments;
   } catch (error) {
     console.error(`Error fetching environments for ${full_name}:`, error);
-    throw error;
+    return handleApiError(error, userId);
   }
+};
+
+const handleApiError = async (error: unknown, userId: string) => {
+  if (error instanceof Error && 'status' in error && error.status === 401) {
+    // Remove the invalid token
+    localStorage.removeItem(`github_token-${userId}`);
+    // Remove the Octokit instance
+    delete octokitInstances[userId];
+    // Instead of redirecting, we'll throw a specific error
+    throw new Error('AUTH_REQUIRED');
+  }
+  throw error;
 };
